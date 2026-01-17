@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-CapCut OTP Telegram Bot - Ultra Fast Edition v6.0
+CapCut OTP Telegram Bot - Ultra Fast Edition v6.1
 ==================================================
 Features:
 1. 5-10 Concurrent OTP Requests Per Second
 2. Fully Async Architecture - Zero Blocking
 3. Multi-User Support - 1000+ Users Simultaneously
 4. Real-time Logging Every 10 Requests
-5. Non-blocking Task Execution
-6. SignerPy Integration
+5. Time Schedule Feature for Bulk Tasks
+6. Original Working OTP Logic
+7. SignerPy Integration
 """
 
 import asyncio
@@ -22,6 +23,7 @@ import time
 import uuid
 import re
 import io
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlencode
 from typing import Optional, List, Dict, Set, Tuple
 from dataclasses import dataclass, field
@@ -30,6 +32,7 @@ from collections import defaultdict
 import base64
 import pytz
 
+import requests
 import aiohttp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -72,6 +75,9 @@ BATCH_SIZE = 10                  # Process 10 numbers at a time
 LOG_INTERVAL = 10                # Log every 10 requests
 MAX_MESSAGE_LENGTH = 4000
 REQUEST_TIMEOUT = 15             # 15 second timeout per request
+
+# Thread pool for blocking operations
+thread_pool = ThreadPoolExecutor(max_workers=50)
 
 # Global stats
 class GlobalStats:
@@ -158,47 +164,47 @@ class DeviceIdentityGenerator:
         used_set.add(fallback_id)
         return fallback_id
     
-    async def generate_fresh_identity(self) -> Dict:
-        async with self._lock:
-            self.generation_count += 1
-            
-            brand = random.choice(list(self.DEVICE_BRANDS.keys()))
-            model = random.choice(self.DEVICE_BRANDS[brand])
-            android_version = random.choice(self.ANDROID_VERSIONS)
-            api_level = self.API_LEVELS[android_version]
-            
-            device_id = self._generate_unique_19_digit_id(self.used_device_ids)
-            iid = self._generate_unique_19_digit_id(self.used_iids)
-            openudid = ''.join(random.choices('0123456789abcdef', k=16))
-            cdid = str(uuid.uuid4())
-            did = f"00000000-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:4]}-ffff-ffff{uuid.uuid4().hex[:8]}"
-            
-            gpu_render = random.choice(self.GPU_RENDERS)
-            build_id = random.choice(self.BUILD_IDS)
-            cronet_version = random.choice(self.CRONET_VERSIONS)
-            ttnet_version = random.choice(self.TTNET_VERSIONS)
-            
-            resolutions = ["1080*2400", "1080*2340", "1080*2436", "1440*3200", "1080*2520", "720*1600"]
-            resolution = random.choice(resolutions)
-            dpi = random.choice(["420", "440", "480", "560", "640"])
-            total_memory = str(random.randint(4000, 12000))
-            available_memory = str(random.randint(1000, 4000))
-            
-            ms_token_base = ''.join(random.choices(string.ascii_letters + string.digits, k=50))
-            ms_token = f"CmAdOS08A7OC5uDiAzJEpwrlDz1CC_{ms_token_base}="
-            odin_tt = ''.join(random.choices('0123456789abcdef', k=128))
-            csrf_token = ''.join(random.choices('0123456789abcdef', k=32))
-            
-            return {
-                "device_id": device_id, "iid": iid, "openudid": openudid, "cdid": cdid, "did": did,
-                "device_type": model, "device_brand": brand, "model": model, "manu": brand.upper(),
-                "gpu_render": gpu_render, "os_api": api_level, "os_version": android_version,
-                "resolution": resolution, "dpi": dpi, "total_memory": total_memory,
-                "available_memory": available_memory, "build_id": build_id,
-                "cronet_version": cronet_version, "ttnet_version": ttnet_version,
-                "ms_token": ms_token, "odin_tt": odin_tt, "csrf_token": csrf_token,
-                "generation_number": self.generation_count,
-            }
+    def generate_fresh_identity(self) -> Dict:
+        """Synchronous version for thread pool"""
+        self.generation_count += 1
+        
+        brand = random.choice(list(self.DEVICE_BRANDS.keys()))
+        model = random.choice(self.DEVICE_BRANDS[brand])
+        android_version = random.choice(self.ANDROID_VERSIONS)
+        api_level = self.API_LEVELS[android_version]
+        
+        device_id = self._generate_unique_19_digit_id(self.used_device_ids)
+        iid = self._generate_unique_19_digit_id(self.used_iids)
+        openudid = ''.join(random.choices('0123456789abcdef', k=16))
+        cdid = str(uuid.uuid4())
+        did = f"00000000-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:4]}-ffff-ffff{uuid.uuid4().hex[:8]}"
+        
+        gpu_render = random.choice(self.GPU_RENDERS)
+        build_id = random.choice(self.BUILD_IDS)
+        cronet_version = random.choice(self.CRONET_VERSIONS)
+        ttnet_version = random.choice(self.TTNET_VERSIONS)
+        
+        resolutions = ["1080*2400", "1080*2340", "1080*2436", "1440*3200", "1080*2520", "720*1600"]
+        resolution = random.choice(resolutions)
+        dpi = random.choice(["420", "440", "480", "560", "640"])
+        total_memory = str(random.randint(4000, 12000))
+        available_memory = str(random.randint(1000, 4000))
+        
+        ms_token_base = ''.join(random.choices(string.ascii_letters + string.digits, k=50))
+        ms_token = f"CmAdOS08A7OC5uDiAzJEpwrlDz1CC_{ms_token_base}="
+        odin_tt = ''.join(random.choices('0123456789abcdef', k=128))
+        csrf_token = ''.join(random.choices('0123456789abcdef', k=32))
+        
+        return {
+            "device_id": device_id, "iid": iid, "openudid": openudid, "cdid": cdid, "did": did,
+            "device_type": model, "device_brand": brand, "model": model, "manu": brand.upper(),
+            "gpu_render": gpu_render, "os_api": api_level, "os_version": android_version,
+            "resolution": resolution, "dpi": dpi, "total_memory": total_memory,
+            "available_memory": available_memory, "build_id": build_id,
+            "cronet_version": cronet_version, "ttnet_version": ttnet_version,
+            "ms_token": ms_token, "odin_tt": odin_tt, "csrf_token": csrf_token,
+            "generation_number": self.generation_count,
+        }
     
     def get_stats(self) -> Dict:
         return {
@@ -209,11 +215,11 @@ class DeviceIdentityGenerator:
 
 
 # ============================================
-# ASYNC CAPCUT OTP SENDER
+# CAPCUT OTP SENDER (ORIGINAL WORKING LOGIC)
 # ============================================
 
-class AsyncCapCutOTPSender:
-    """Fully Async CapCut OTP Sender - Non-blocking"""
+class CapCutOTPSender:
+    """CapCut OTP Sender with SignerPy signatures - Original Working Logic"""
     
     BASE_URL = "https://passport16-normal-sg.capcutapi.com"
     ENDPOINT = "/passport/mobile/send_code/v1/"
@@ -230,6 +236,56 @@ class AsyncCapCutOTPSender:
     
     def __init__(self, identity_generator: DeviceIdentityGenerator):
         self.identity_generator = identity_generator
+        self.current_identity = None
+    
+    def _create_session(self, proxy: Optional[str] = None) -> requests.Session:
+        session = requests.Session()
+        if proxy:
+            if not proxy.startswith("http") and not proxy.startswith("socks"):
+                proxy = f"http://{proxy}"
+            session.proxies = {"http": proxy, "https": proxy}
+        return session
+    
+    def refresh_identity(self) -> Dict:
+        self.current_identity = self.identity_generator.generate_fresh_identity()
+        return self.current_identity
+    
+    def _get_config(self) -> Dict:
+        if not self.current_identity:
+            self.refresh_identity()
+        config = self.BASE_CONFIG.copy()
+        config.update({
+            "device_id": self.current_identity["device_id"],
+            "iid": self.current_identity["iid"],
+            "openudid": self.current_identity["openudid"],
+            "cdid": self.current_identity["cdid"],
+            "did": self.current_identity["did"],
+            "device_type": self.current_identity["device_type"],
+            "device_brand": self.current_identity["device_brand"],
+            "model": self.current_identity["model"],
+            "manu": self.current_identity["manu"],
+            "gpu_render": self.current_identity["gpu_render"],
+            "os_api": self.current_identity["os_api"],
+            "os_version": self.current_identity["os_version"],
+            "resolution": self.current_identity["resolution"],
+            "dpi": self.current_identity["dpi"],
+            "total_memory": self.current_identity["total_memory"],
+            "available_memory": self.current_identity["available_memory"],
+            "cronet_version": self.current_identity["cronet_version"],
+            "ttnet_version": self.current_identity["ttnet_version"],
+        })
+        return config
+    
+    def _get_cookies(self) -> Dict:
+        if not self.current_identity:
+            self.refresh_identity()
+        return {
+            "odin_tt": self.current_identity["odin_tt"],
+            "msToken": self.current_identity["ms_token"],
+            "passport_csrf_token": self.current_identity["csrf_token"],
+            "passport_csrf_token_default": self.current_identity["csrf_token"],
+            "store-idc": "alisg",
+        }
     
     def _encrypt_phone(self, phone_number: str) -> str:
         if SIGNERPY_AVAILABLE:
@@ -243,60 +299,53 @@ class AsyncCapCutOTPSender:
     def _encode_base64(self, text: str) -> str:
         return base64.b64encode(text.encode()).decode()
     
-    def _build_url_params(self, config: Dict, identity: Dict, timestamp: int) -> str:
+    def _build_url_params(self, config: Dict, timestamp: int) -> str:
         rticket = str(timestamp * 1000 + random.randint(0, 999))
         params = {
             "passport-sdk-version": config["passport_sdk_version"],
-            "iid": identity["iid"], "device_id": identity["device_id"],
+            "iid": config["iid"], "device_id": config["device_id"],
             "ac": config["ac"], "channel": config["channel"],
             "aid": str(config["aid"]), "app_name": config["app_name"],
             "version_code": config["version_code"], "version_name": config["version_name"],
             "device_platform": config["device_platform"], "os": config["os"],
-            "ssmix": config["ssmix"], "device_type": identity["device_type"],
-            "device_brand": identity["device_brand"], "language": config["language"],
-            "os_api": identity["os_api"], "os_version": identity["os_version"],
-            "openudid": identity["openudid"], "manifest_version_code": config["manifest_version_code"],
-            "resolution": identity["resolution"], "dpi": identity["dpi"],
+            "ssmix": config["ssmix"], "device_type": config["device_type"],
+            "device_brand": config["device_brand"], "language": config["language"],
+            "os_api": config["os_api"], "os_version": config["os_version"],
+            "openudid": config["openudid"], "manifest_version_code": config["manifest_version_code"],
+            "resolution": config["resolution"], "dpi": config["dpi"],
             "update_version_code": config["update_version_code"], "_rticket": rticket,
             "carrier_region": config["carrier_region"], "mcc_mnc": config["mcc_mnc"],
-            "region": config["region"], "cdid": identity["cdid"],
+            "region": config["region"], "cdid": config["cdid"],
             "effect_sdk_version": config["effect_sdk_version"],
             "subdivision_id": config["subdivision_id"], "user_type": config["user_type"],
-            "cronet_version": identity["cronet_version"], "ttnet_version": identity["ttnet_version"],
+            "cronet_version": config["cronet_version"], "ttnet_version": config["ttnet_version"],
             "use_store_region_cookie": "1",
         }
         return urlencode(params)
     
-    def _build_body(self, phone_number: str, config: Dict, identity: Dict, timestamp: int) -> str:
+    def _build_body(self, phone_number: str, config: Dict, timestamp: int) -> str:
         encrypted_mobile = self._encrypt_phone(phone_number)
         rticket = str(timestamp * 1000 + random.randint(0, 999))
         params = {
             "auto_read": "1", "account_sdk_source": "app", "unbind_exist": "35",
             "mix_mode": "1", "mobile": encrypted_mobile, "is6Digits": "1", "type": "3731",
-            "iid": identity["iid"], "device_id": identity["device_id"],
+            "iid": config["iid"], "device_id": config["device_id"],
             "ac": config["ac"], "channel": config["channel"],
             "aid": str(config["aid"]), "app_name": config["app_name"],
             "version_code": config["version_code"], "version_name": config["version_name"],
             "device_platform": config["device_platform"], "os": config["os"],
-            "ssmix": config["ssmix"], "device_type": identity["device_type"],
-            "device_brand": identity["device_brand"], "language": config["language"],
-            "os_api": identity["os_api"], "os_version": identity["os_version"],
-            "openudid": identity["openudid"], "manifest_version_code": config["manifest_version_code"],
-            "resolution": identity["resolution"], "dpi": identity["dpi"],
+            "ssmix": config["ssmix"], "device_type": config["device_type"],
+            "device_brand": config["device_brand"], "language": config["language"],
+            "os_api": config["os_api"], "os_version": config["os_version"],
+            "openudid": config["openudid"], "manifest_version_code": config["manifest_version_code"],
+            "resolution": config["resolution"], "dpi": config["dpi"],
             "update_version_code": config["update_version_code"], "_rticket": rticket,
             "carrier_region": config["carrier_region"], "mcc_mnc": config["mcc_mnc"],
-            "region": config["region"], "cdid": identity["cdid"],
+            "region": config["region"], "cdid": config["cdid"],
         }
         return urlencode(params)
     
-    def _build_cookie_string(self, identity: Dict) -> str:
-        cookies = {
-            "odin_tt": identity["odin_tt"],
-            "msToken": identity["ms_token"],
-            "passport_csrf_token": identity["csrf_token"],
-            "passport_csrf_token_default": identity["csrf_token"],
-            "store-idc": "alisg",
-        }
+    def _build_cookie_string(self, cookies: Dict) -> str:
         return "; ".join([f"{k}={v}" for k, v in cookies.items()])
     
     def _generate_signatures(self, url_params: str, body: str, cookie: str, config: Dict) -> Dict:
@@ -304,36 +353,36 @@ class AsyncCapCutOTPSender:
             raise Exception("SignerPy library not available!")
         return sign(params=url_params, payload=body, cookie=cookie, version=8404, aid=config["aid"])
     
-    def _build_headers(self, config: Dict, identity: Dict, timestamp: int, signatures: Dict) -> Dict:
+    def _build_headers(self, config: Dict, cookies: Dict, timestamp: int, signatures: Dict) -> Dict:
         return {
             "Host": "passport16-normal-sg.capcutapi.com",
             "Connection": "keep-alive",
-            "Cookie": self._build_cookie_string(identity),
+            "Cookie": self._build_cookie_string(cookies),
             "lan": "en", "loc": "US", "pf": "0", "vr": "277884928", "appvr": "9.2.0",
             "vc": config["version_code"], "device-time": str(timestamp),
-            "tdid": identity["device_id"], "sign-ver": "1",
-            "sign": hashlib.md5(f"{timestamp}{identity['device_id']}".encode()).hexdigest(),
+            "tdid": config["device_id"], "sign-ver": "1",
+            "sign": hashlib.md5(f"{timestamp}{config['device_id']}".encode()).hexdigest(),
             "app-sdk-version": config["app_sdk_version"], "appid": str(config["aid"]),
-            "header-content": f"ode/v1/|0|9.2.0|{timestamp}|{identity['device_id']}",
+            "header-content": f"ode/v1/|0|9.2.0|{timestamp}|{config['device_id']}",
             "host-abi": "64", "cc-newuser-channel": "common", "Cache-Control": "no-cache",
-            "sysvr": identity["os_api"], "ch": config["channel"], "uid": "0",
-            "COMPRESSED": "1", "did": identity["did"],
-            "model": self._encode_base64(identity["model"]),
-            "manu": self._encode_base64(identity["manu"]),
-            "GPURender": self._encode_base64(identity["gpu_render"]),
-            "HDR-TDID": identity["device_id"], "HDR-TIID": identity["iid"],
+            "sysvr": config["os_api"], "ch": config["channel"], "uid": "0",
+            "COMPRESSED": "1", "did": config["did"],
+            "model": self._encode_base64(config["model"]),
+            "manu": self._encode_base64(config["manu"]),
+            "GPURender": self._encode_base64(config["gpu_render"]),
+            "HDR-TDID": config["device_id"], "HDR-TIID": config["iid"],
             "HDR-Device-Time": str(timestamp), "version_code": "277884928",
-            "total-memory": identity["total_memory"], "available-memory": identity["available_memory"],
-            "HDR-Sign": hashlib.md5(f"{timestamp}{identity['iid']}".encode()).hexdigest(),
-            "HDR-Sign-Ver": "1", "x-tt-passport-csrf-token": identity["csrf_token"],
+            "total-memory": config["total_memory"], "available-memory": config["available_memory"],
+            "HDR-Sign": hashlib.md5(f"{timestamp}{config['iid']}".encode()).hexdigest(),
+            "HDR-Sign-Ver": "1", "x-tt-passport-csrf-token": cookies["passport_csrf_token"],
             "x-vc-bdturing-sdk-version": "2.3.0.i18n", "sdk-version": "2",
             "passport-sdk-version": config["passport_sdk_version"],
             "commerce-sign-version": "v1", "region": config["region"],
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "X-SS-STUB": signatures.get("x-ss-stub", ""),
             "X-SS-DP": str(config["aid"]),
-            "x-tt-trace-id": trace_id(device_id=identity["device_id"]) if SIGNERPY_AVAILABLE else "",
-            "User-Agent": f"com.lemon.lvoverseas/{config['manifest_version_code']} (Linux; U; Android {identity['os_version']}; en_US; {identity['device_type']}; Build/{identity.get('build_id', 'AP3A.240905.015.A2')}; Cronet/TTNetVersion:{identity['cronet_version'].split('_')[0]} {identity['cronet_version'].split('_')[1]} QuicVersion:46688bb4 2022-11-28)",
+            "x-tt-trace-id": trace_id(device_id=config["device_id"]) if SIGNERPY_AVAILABLE else "",
+            "User-Agent": f"com.lemon.lvoverseas/{config['manifest_version_code']} (Linux; U; Android {config['os_version']}; en_US; {config['device_type']}; Build/{self.current_identity.get('build_id', 'AP3A.240905.015.A2')}; Cronet/TTNetVersion:{config['cronet_version'].split('_')[0]} {config['cronet_version'].split('_')[1]} QuicVersion:46688bb4 2022-11-28)",
             "Accept-Encoding": "gzip, deflate",
             "X-Gorgon": signatures.get("x-gorgon", ""),
             "X-Khronos": signatures.get("x-khronos", ""),
@@ -341,68 +390,53 @@ class AsyncCapCutOTPSender:
             "X-Ladon": signatures.get("x-ladon", ""),
         }
     
-    async def send_otp(self, phone_number: str, proxy: Optional[str] = None, session: Optional[aiohttp.ClientSession] = None) -> Dict:
-        """Send OTP asynchronously - non-blocking"""
+    def send_otp_sync(self, phone_number: str, proxy: Optional[str] = None) -> Dict:
+        """Synchronous OTP send - Original Working Logic"""
         phone = phone_number.strip().replace(" ", "").replace("-", "")
         if not phone.startswith("+"):
             phone = "+" + phone
         
         start_time = time.time()
         
-        # Generate fresh identity for this request
-        identity = await self.identity_generator.generate_fresh_identity()
-        config = self.BASE_CONFIG.copy()
+        # Refresh identity for each request
+        self.refresh_identity()
+        
+        config = self._get_config()
+        cookies = self._get_cookies()
         timestamp = int(time.time())
         
-        url_params = self._build_url_params(config, identity, timestamp)
-        body = self._build_body(phone, config, identity, timestamp)
-        cookie_str = self._build_cookie_string(identity)
+        url_params = self._build_url_params(config, timestamp)
+        body = self._build_body(phone, config, timestamp)
+        cookie_str = self._build_cookie_string(cookies)
         
         try:
             signatures = self._generate_signatures(url_params, body, cookie_str, config)
         except Exception as e:
             return {"error": str(e), "success": False, "time_ms": (time.time() - start_time) * 1000, "phone": phone}
         
-        headers = self._build_headers(config, identity, timestamp, signatures)
+        headers = self._build_headers(config, cookies, timestamp, signatures)
         url = f"{self.BASE_URL}{self.ENDPOINT}?{url_params}"
         
-        # Setup proxy
-        proxy_url = None
-        if proxy:
-            if not proxy.startswith("http") and not proxy.startswith("socks"):
-                proxy_url = f"http://{proxy}"
-            else:
-                proxy_url = proxy
-        
-        close_session = False
-        if session is None:
-            connector = aiohttp.TCPConnector(limit=100, limit_per_host=50, ttl_dns_cache=300)
-            session = aiohttp.ClientSession(connector=connector)
-            close_session = True
+        session = self._create_session(proxy)
         
         try:
-            async with session.post(url, data=body, headers=headers, proxy=proxy_url, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)) as response:
-                elapsed = (time.time() - start_time) * 1000
-                try:
-                    result = await response.json()
-                    result["success"] = result.get("message") == "success"
-                    result["proxy_used"] = proxy or "Direct"
-                    result["device_id"] = identity["device_id"]
-                    result["time_ms"] = elapsed
-                    result["phone"] = phone
-                    return result
-                except json.JSONDecodeError:
-                    text = await response.text()
-                    return {"error": "Invalid JSON response", "raw": text[:200], "success": False, "time_ms": elapsed, "phone": phone}
-        except asyncio.TimeoutError:
+            response = session.post(url, data=body, headers=headers, timeout=15)
             elapsed = (time.time() - start_time) * 1000
-            return {"error": "Request timeout", "success": False, "time_ms": elapsed, "phone": phone}
-        except Exception as e:
+            try:
+                result = response.json()
+                result["success"] = result.get("message") == "success"
+                result["proxy_used"] = proxy or "Direct"
+                result["device_id"] = config["device_id"]
+                result["time_ms"] = elapsed
+                result["phone"] = phone
+                return result
+            except json.JSONDecodeError:
+                return {"error": "Invalid JSON response", "raw": response.text[:200], "success": False, "time_ms": elapsed, "phone": phone}
+        except requests.exceptions.RequestException as e:
             elapsed = (time.time() - start_time) * 1000
             return {"error": str(e), "success": False, "time_ms": elapsed, "phone": phone}
         finally:
-            if close_session:
-                await session.close()
+            session.close()
 
 
 # ============================================
@@ -424,11 +458,23 @@ class Task:
     start_time: float = field(default_factory=time.time)
 
 
+@dataclass
+class ScheduledTask:
+    schedule_id: str
+    phone_numbers: List[str]
+    proxies: List[str]
+    chat_id: str
+    scheduled_time: datetime
+    status: str = "pending"  # pending, running, completed, cancelled
+
+
 class TaskManager:
     def __init__(self):
         self.tasks: Dict[str, Task] = {}
+        self.scheduled_tasks: Dict[str, ScheduledTask] = {}
         self.running_tasks: Set[str] = set()
         self.task_counter = 0
+        self.schedule_counter = 0
         self._lock = asyncio.Lock()
     
     async def create_task(self, phone_numbers: List[str], proxies: List[str], chat_id: str) -> str:
@@ -439,8 +485,25 @@ class TaskManager:
             self.tasks[task_id] = task
             return task_id
     
+    async def create_scheduled_task(self, phone_numbers: List[str], proxies: List[str], chat_id: str, scheduled_time: datetime) -> str:
+        async with self._lock:
+            self.schedule_counter += 1
+            schedule_id = f"schedule_{self.schedule_counter}"
+            scheduled_task = ScheduledTask(
+                schedule_id=schedule_id,
+                phone_numbers=phone_numbers,
+                proxies=proxies,
+                chat_id=chat_id,
+                scheduled_time=scheduled_time
+            )
+            self.scheduled_tasks[schedule_id] = scheduled_task
+            return schedule_id
+    
     def get_task(self, task_id: str) -> Optional[Task]:
         return self.tasks.get(task_id)
+    
+    def get_scheduled_task(self, schedule_id: str) -> Optional[ScheduledTask]:
+        return self.scheduled_tasks.get(schedule_id)
     
     async def cancel_task(self, task_id: str) -> bool:
         task = self.tasks.get(task_id)
@@ -450,11 +513,21 @@ class TaskManager:
             return True
         return False
     
+    async def cancel_scheduled_task(self, schedule_id: str) -> bool:
+        scheduled_task = self.scheduled_tasks.get(schedule_id)
+        if scheduled_task:
+            scheduled_task.status = "cancelled"
+            return True
+        return False
+    
     def get_running_count(self) -> int:
         return len(self.running_tasks)
     
     def get_all_tasks(self) -> List[Task]:
         return list(self.tasks.values())
+    
+    def get_all_scheduled_tasks(self) -> List[ScheduledTask]:
+        return list(self.scheduled_tasks.values())
 
 
 # ============================================
@@ -463,7 +536,6 @@ class TaskManager:
 
 identity_generator = DeviceIdentityGenerator()
 task_manager = TaskManager()
-otp_sender = AsyncCapCutOTPSender(identity_generator)
 user_states: Dict[int, Dict] = defaultdict(dict)
 
 
@@ -497,6 +569,26 @@ def parse_proxies(text: str) -> List[str]:
     return proxies
 
 
+def parse_schedule_time(time_str: str) -> Optional[datetime]:
+    """Parse schedule time string to datetime"""
+    try:
+        # Format: HH:MM or HH:MM:SS
+        now = get_pakistan_time()
+        parts = time_str.strip().split(':')
+        if len(parts) >= 2:
+            hour = int(parts[0])
+            minute = int(parts[1])
+            second = int(parts[2]) if len(parts) > 2 else 0
+            scheduled = now.replace(hour=hour, minute=minute, second=second, microsecond=0)
+            # If time has passed today, schedule for tomorrow
+            if scheduled <= now:
+                scheduled += timedelta(days=1)
+            return scheduled
+    except:
+        pass
+    return None
+
+
 async def send_message_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: str, text: str, **kwargs):
     """Send message safely, handling long messages"""
     try:
@@ -511,6 +603,36 @@ async def send_message_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: str, te
 
 
 # ============================================
+# ASYNC OTP WRAPPER
+# ============================================
+
+async def send_otp_async(phone: str, proxies: List[str], semaphore: asyncio.Semaphore) -> Dict:
+    """Send OTP asynchronously using thread pool"""
+    async with semaphore:
+        loop = asyncio.get_event_loop()
+        proxy = random.choice(proxies) if proxies else None
+        
+        # Create a new sender instance for thread safety
+        sender = CapCutOTPSender(identity_generator)
+        
+        # Run blocking OTP send in thread pool
+        result = await loop.run_in_executor(thread_pool, sender.send_otp_sync, phone, proxy)
+        
+        # Retry on failure
+        if not result.get("success"):
+            error_desc = str(result.get("data", {}).get("description", result.get("error", ""))).lower()
+            limit_keywords = ["limit", "frequency", "maximum", "too many", "often", "error", "timeout"]
+            
+            if any(kw in error_desc for kw in limit_keywords):
+                proxy = random.choice(proxies) if proxies else None
+                sender2 = CapCutOTPSender(identity_generator)
+                result = await loop.run_in_executor(thread_pool, sender2.send_otp_sync, phone, proxy)
+        
+        await global_stats.increment(result.get("success", False))
+        return result
+
+
+# ============================================
 # COMMAND HANDLERS
 # ============================================
 
@@ -520,13 +642,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📦 Bulk OTP", callback_data="bulk"), InlineKeyboardButton("📱 Single OTP", callback_data="single")],
         [InlineKeyboardButton("📁 Upload Numbers", callback_data="upload_numbers"), InlineKeyboardButton("🔒 Upload Proxies", callback_data="upload_proxies")],
+        [InlineKeyboardButton("⏰ Schedule Task", callback_data="schedule"), InlineKeyboardButton("📋 Scheduled", callback_data="scheduled_list")],
         [InlineKeyboardButton("📊 Status", callback_data="status"), InlineKeyboardButton("🔄 Tasks", callback_data="tasks")],
         [InlineKeyboardButton("📈 Global Stats", callback_data="global_stats")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     msg = f"""
-🚀 <b>CapCut OTP Bot - Ultra Fast v6.0</b>
+🚀 <b>CapCut OTP Bot - Ultra Fast v6.1</b>
 
 ⚡ <b>Performance:</b>
 • 5-10 Concurrent OTP/Second
@@ -537,10 +660,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🕐 <b>Time:</b> {pk_time}
 
 <b>📱 Single OTP:</b>
-Send: <code>/single +1234567890</code>
+<code>/single +923099003842</code>
 
 <b>📦 Bulk OTP:</b>
-Use /bulk or upload file
+/bulk - Start bulk task
+
+<b>⏰ Schedule Task:</b>
+<code>/schedule 14:30</code> - Schedule at 2:30 PM
 
 <b>📁 File Upload:</b>
 /uploadnumbers - Upload TXT/CSV
@@ -549,10 +675,9 @@ Use /bulk or upload file
 <b>🔧 Commands:</b>
 /status - Bot status
 /tasks - Active tasks
+/scheduled - Scheduled tasks
 /cancel [id] - Cancel task
 /stats - Global statistics
-/clearnumbers - Clear numbers
-/clearproxies - Clear proxies
 """
     await update.message.reply_text(msg, parse_mode="HTML", reply_markup=reply_markup)
 
@@ -569,6 +694,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     numbers_count = len(user_states[user_id].get('numbers', []))
     proxies_count = len(user_states[user_id].get('proxies', []))
     g_stats = global_stats.get_stats()
+    scheduled_count = len([s for s in task_manager.get_all_scheduled_tasks() if s.status == "pending"])
     
     msg = f"""
 📊 <b>Bot Status</b>
@@ -588,13 +714,13 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 📋 <b>Tasks:</b>
 • Running: {running}
+• Scheduled: {scheduled_count}
 • Generated IDs: {stats['total_generated']:,}
 
 📈 <b>Global Stats:</b>
 • Total Requests: {g_stats['total_requests']:,}
 • Success: {g_stats['total_success']:,}
 • Failed: {g_stats['total_failed']:,}
-• Req/Min: {g_stats['requests_per_minute']:.1f}
 """
     await update.message.reply_text(msg, parse_mode="HTML")
 
@@ -629,8 +755,8 @@ async def single_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id]['awaiting'] = 'single_phone'
         await update.message.reply_text(
             "📱 <b>Single OTP</b>\n\n"
-            "Usage: <code>/single +1234567890</code>\n"
-            "Or: <code>/single +1234567890 proxy:port</code>",
+            "Usage: <code>/single +923099003842</code>\n"
+            "Or: <code>/single +923099003842 proxy:port</code>",
             parse_mode="HTML"
         )
 
@@ -649,6 +775,90 @@ async def bulk_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     proxies = user_states[user_id].get('proxies', [])
     await start_bulk_task(update, context, numbers, proxies)
+
+
+async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Schedule a bulk task for later"""
+    user_id = update.effective_user.id
+    numbers = user_states[user_id].get('numbers', [])
+    
+    if not numbers:
+        await update.message.reply_text(
+            "❌ <b>No numbers loaded!</b>\n\n"
+            "Use /setnumbers or /uploadnumbers first.",
+            parse_mode="HTML"
+        )
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "⏰ <b>Schedule Task</b>\n\n"
+            "Usage: <code>/schedule HH:MM</code>\n"
+            "Example: <code>/schedule 14:30</code> (2:30 PM)\n\n"
+            "Time is in Pakistan timezone (PKT)",
+            parse_mode="HTML"
+        )
+        return
+    
+    time_str = context.args[0]
+    scheduled_time = parse_schedule_time(time_str)
+    
+    if not scheduled_time:
+        await update.message.reply_text(
+            "❌ <b>Invalid time format!</b>\n\n"
+            "Use: <code>/schedule HH:MM</code>\n"
+            "Example: <code>/schedule 14:30</code>",
+            parse_mode="HTML"
+        )
+        return
+    
+    proxies = user_states[user_id].get('proxies', [])
+    chat_id = str(update.effective_chat.id)
+    
+    schedule_id = await task_manager.create_scheduled_task(numbers, proxies, chat_id, scheduled_time)
+    
+    # Start scheduler coroutine
+    asyncio.create_task(run_scheduled_task(context, schedule_id))
+    
+    await update.message.reply_text(
+        f"⏰ <b>Task Scheduled!</b>\n\n"
+        f"🆔 ID: {schedule_id}\n"
+        f"📱 Numbers: {len(numbers):,}\n"
+        f"🔒 Proxies: {len(proxies):,}\n"
+        f"🕐 Time: {scheduled_time.strftime('%I:%M %p PKT')}\n\n"
+        f"Use /cancelschedule {schedule_id} to cancel.",
+        parse_mode="HTML"
+    )
+
+
+async def scheduled_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List scheduled tasks"""
+    scheduled_tasks = task_manager.get_all_scheduled_tasks()
+    pending = [s for s in scheduled_tasks if s.status == "pending"]
+    
+    if not pending:
+        await update.message.reply_text("📋 No scheduled tasks.", parse_mode="HTML")
+        return
+    
+    msg = "⏰ <b>Scheduled Tasks:</b>\n\n"
+    for task in pending[-10:]:
+        msg += f"🆔 {task.schedule_id}\n"
+        msg += f"   📱 Numbers: {len(task.phone_numbers):,}\n"
+        msg += f"   🕐 Time: {task.scheduled_time.strftime('%I:%M %p PKT')}\n\n"
+    
+    await update.message.reply_text(msg, parse_mode="HTML")
+
+
+async def cancelschedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancel a scheduled task"""
+    if context.args:
+        schedule_id = context.args[0]
+        if await task_manager.cancel_scheduled_task(schedule_id):
+            await update.message.reply_text(f"✅ Scheduled task {schedule_id} cancelled.", parse_mode="HTML")
+        else:
+            await update.message.reply_text(f"❌ Scheduled task {schedule_id} not found.", parse_mode="HTML")
+    else:
+        await update.message.reply_text("Usage: /cancelschedule <schedule_id>", parse_mode="HTML")
 
 
 async def setnumbers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -801,7 +1011,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "single":
         await query.edit_message_text(
             "📱 <b>Single OTP</b>\n\n"
-            "Send: <code>/single +1234567890</code>",
+            "Send: <code>/single +923099003842</code>",
             parse_mode="HTML"
         )
     
@@ -822,6 +1032,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Send a TXT file with proxies.",
             parse_mode="HTML"
         )
+    
+    elif data == "schedule":
+        await query.edit_message_text(
+            "⏰ <b>Schedule Task</b>\n\n"
+            "Use: <code>/schedule HH:MM</code>\n"
+            "Example: <code>/schedule 14:30</code>\n\n"
+            "Time is in Pakistan timezone (PKT)",
+            parse_mode="HTML"
+        )
+    
+    elif data == "scheduled_list":
+        scheduled_tasks = task_manager.get_all_scheduled_tasks()
+        pending = [s for s in scheduled_tasks if s.status == "pending"]
+        
+        if not pending:
+            await query.edit_message_text("📋 No scheduled tasks.", parse_mode="HTML")
+        else:
+            msg = "⏰ <b>Scheduled Tasks:</b>\n\n"
+            for task in pending[-5:]:
+                msg += f"🆔 {task.schedule_id}\n"
+                msg += f"   📱 Numbers: {len(task.phone_numbers):,}\n"
+                msg += f"   🕐 Time: {task.scheduled_time.strftime('%I:%M %p PKT')}\n\n"
+            await query.edit_message_text(msg, parse_mode="HTML")
     
     elif data == "status":
         stats = identity_generator.get_stats()
@@ -887,7 +1120,11 @@ async def process_single_otp(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if not proxy and proxies:
         proxy = random.choice(proxies)
     
-    result = await otp_sender.send_otp(phone_num, proxy)
+    # Use thread pool for blocking operation
+    loop = asyncio.get_event_loop()
+    sender = CapCutOTPSender(identity_generator)
+    result = await loop.run_in_executor(thread_pool, sender.send_otp_sync, phone_num, proxy)
+    
     await global_stats.increment(result.get("success", False))
     
     if result.get("success"):
@@ -895,7 +1132,7 @@ async def process_single_otp(update: Update, context: ContextTypes.DEFAULT_TYPE,
         status_detail = result.get("message", "OTP Sent")
     else:
         status = "❌ FAILED"
-        error = result.get("data", {}).get("description", result.get("error", "Unknown"))
+        error = result.get("data", {}).get("description", result.get("error", "Unknown")) if isinstance(result.get("data"), dict) else result.get("error", "Unknown")
         status_detail = str(error)[:100]
     
     time_ms = result.get("time_ms", 0)
@@ -951,92 +1188,120 @@ async def start_bulk_task_from_callback(context: ContextTypes.DEFAULT_TYPE, quer
     asyncio.create_task(run_bulk_task_concurrent(context, task))
 
 
-async def send_single_otp_with_retry(phone: str, proxies: List[str], semaphore: asyncio.Semaphore, session: aiohttp.ClientSession) -> Dict:
-    """Send single OTP with retry logic - concurrent safe"""
-    async with semaphore:
-        proxy = random.choice(proxies) if proxies else None
-        result = await otp_sender.send_otp(phone, proxy, session)
-        
-        # Retry on failure
-        if not result.get("success"):
-            error_desc = str(result.get("data", {}).get("description", result.get("error", ""))).lower()
-            limit_keywords = ["limit", "frequency", "maximum", "too many", "often", "error", "timeout"]
-            
-            if any(kw in error_desc for kw in limit_keywords):
-                # Retry with different proxy
-                proxy = random.choice(proxies) if proxies else None
-                result = await otp_sender.send_otp(phone, proxy, session)
-        
-        await global_stats.increment(result.get("success", False))
-        return result
+async def run_scheduled_task(context: ContextTypes.DEFAULT_TYPE, schedule_id: str):
+    """Run a scheduled task at the specified time"""
+    scheduled_task = task_manager.get_scheduled_task(schedule_id)
+    if not scheduled_task:
+        return
+    
+    # Wait until scheduled time
+    now = get_pakistan_time()
+    wait_seconds = (scheduled_task.scheduled_time - now).total_seconds()
+    
+    if wait_seconds > 0:
+        await asyncio.sleep(wait_seconds)
+    
+    # Check if cancelled
+    if scheduled_task.status == "cancelled":
+        return
+    
+    scheduled_task.status = "running"
+    
+    # Create and run the task
+    task_id = await task_manager.create_task(
+        scheduled_task.phone_numbers,
+        scheduled_task.proxies,
+        scheduled_task.chat_id
+    )
+    task = task_manager.get_task(task_id)
+    task.status = "running"
+    task_manager.running_tasks.add(task_id)
+    
+    await context.bot.send_message(
+        chat_id=scheduled_task.chat_id,
+        text=f"⏰ <b>Scheduled Task Starting!</b>\n\n"
+             f"🆔 Schedule: {schedule_id}\n"
+             f"🆔 Task: {task_id}\n"
+             f"📱 Numbers: {len(scheduled_task.phone_numbers):,}\n"
+             f"🔒 Proxies: {len(scheduled_task.proxies):,}",
+        parse_mode="HTML"
+    )
+    
+    await run_bulk_task_concurrent(context, task)
+    scheduled_task.status = "completed"
 
 
 async def run_bulk_task_concurrent(context: ContextTypes.DEFAULT_TYPE, task: Task):
     """Run bulk task with TRUE CONCURRENCY - 5-10 requests at once"""
     
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_OTP)
-    connector = aiohttp.TCPConnector(limit=100, limit_per_host=50, ttl_dns_cache=300)
+    batch_results = []
+    last_log_count = 0
     
-    async with aiohttp.ClientSession(connector=connector) as session:
-        batch_results = []
-        last_log_count = 0
+    # Process in batches for better control
+    for batch_start in range(0, len(task.phone_numbers), BATCH_SIZE):
+        if task.cancelled:
+            break
         
-        # Process in batches for better control
-        for batch_start in range(0, len(task.phone_numbers), BATCH_SIZE):
-            if task.cancelled:
-                break
-            
-            batch_end = min(batch_start + BATCH_SIZE, len(task.phone_numbers))
-            batch = task.phone_numbers[batch_start:batch_end]
-            
-            # Create concurrent tasks for this batch
-            tasks = [
-                send_single_otp_with_retry(phone, task.proxies, semaphore, session)
-                for phone in batch
-            ]
-            
-            # Execute all concurrently
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Process results
-            for result in results:
-                if isinstance(result, Exception):
-                    task.fail_count += 1
-                    batch_results.append({"success": False, "error": str(result)})
+        batch_end = min(batch_start + BATCH_SIZE, len(task.phone_numbers))
+        batch = task.phone_numbers[batch_start:batch_end]
+        
+        # Create concurrent tasks for this batch
+        tasks = [
+            send_otp_async(phone, task.proxies, semaphore)
+            for phone in batch
+        ]
+        
+        # Execute all concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        for result in results:
+            if isinstance(result, Exception):
+                task.fail_count += 1
+                batch_results.append({"success": False, "error": str(result)})
+            else:
+                if result.get("success"):
+                    task.success_count += 1
                 else:
-                    if result.get("success"):
-                        task.success_count += 1
-                    else:
-                        task.fail_count += 1
-                    batch_results.append(result)
-                
-                task.current_index += 1
+                    task.fail_count += 1
+                batch_results.append(result)
             
-            # Log every LOG_INTERVAL requests
-            if task.current_index - last_log_count >= LOG_INTERVAL:
-                last_log_count = task.current_index
-                elapsed = time.time() - task.start_time
-                speed = task.current_index / elapsed if elapsed > 0 else 0
-                
-                # Get last few results for log
-                recent_results = batch_results[-LOG_INTERVAL:]
-                recent_success = sum(1 for r in recent_results if r.get("success"))
-                recent_failed = LOG_INTERVAL - recent_success
-                
-                progress_msg = f"""
+            task.current_index += 1
+        
+        # Log every LOG_INTERVAL requests
+        if task.current_index - last_log_count >= LOG_INTERVAL:
+            last_log_count = task.current_index
+            elapsed = time.time() - task.start_time
+            speed = task.current_index / elapsed if elapsed > 0 else 0
+            
+            # Get last few results for log
+            recent_results = batch_results[-LOG_INTERVAL:]
+            recent_success = sum(1 for r in recent_results if r.get("success"))
+            recent_failed = len(recent_results) - recent_success
+            
+            # Global stats
+            g_stats = global_stats.get_stats()
+            
+            progress_msg = f"""
 📊 <b>Task #{task.task_id} Progress</b>
 
 📈 Progress: {task.current_index}/{len(task.phone_numbers)}
 ✅ Total Success: {task.success_count}
 ❌ Total Failed: {task.fail_count}
 
-📋 <b>Last {LOG_INTERVAL} Requests:</b>
+📋 <b>Last {len(recent_results)} Requests:</b>
 ✅ Success: {recent_success} | ❌ Failed: {recent_failed}
 
 🚀 Speed: {speed:.1f} req/s
 ⏱ Elapsed: {elapsed:.1f}s
+
+📈 <b>Global Hits:</b>
+• Total: {g_stats['total_requests']:,}
+• Success: {g_stats['total_success']:,}
+• Failed: {g_stats['total_failed']:,}
 """
-                await send_message_safe(context, task.chat_id, progress_msg, parse_mode="HTML")
+            await send_message_safe(context, task.chat_id, progress_msg, parse_mode="HTML")
     
     task.status = "completed" if not task.cancelled else "cancelled"
     task_manager.running_tasks.discard(task.task_id)
@@ -1045,6 +1310,7 @@ async def run_bulk_task_concurrent(context: ContextTypes.DEFAULT_TYPE, task: Tas
     elapsed = time.time() - task.start_time
     rate = (task.success_count / len(task.phone_numbers) * 100) if task.phone_numbers else 0
     speed = len(task.phone_numbers) / elapsed if elapsed > 0 else 0
+    g_stats = global_stats.get_stats()
     
     final_msg = f"""
 🏁 <b>Task #{task.task_id} Complete!</b>
@@ -1056,6 +1322,11 @@ async def run_bulk_task_concurrent(context: ContextTypes.DEFAULT_TYPE, task: Tas
 
 ⏱ Total Time: {elapsed:.1f}s
 🚀 Average Speed: {speed:.1f} req/s
+
+📈 <b>Global Hits:</b>
+• Total Requests: {g_stats['total_requests']:,}
+• Total Success: {g_stats['total_success']:,}
+• Total Failed: {g_stats['total_failed']:,}
 """
     await send_message_safe(context, task.chat_id, final_msg, parse_mode="HTML")
 
@@ -1096,7 +1367,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         # Check if it's a phone number
         text_clean = text.strip()
-        if text_clean.startswith('+') or (text_clean[0].isdigit() and len(text_clean) >= 10):
+        if text_clean.startswith('+') or (len(text_clean) >= 10 and text_clean[0].isdigit()):
             await process_single_otp(update, context, text_clean)
 
 
@@ -1169,6 +1440,9 @@ def main():
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("single", single_command))
     application.add_handler(CommandHandler("bulk", bulk_command))
+    application.add_handler(CommandHandler("schedule", schedule_command))
+    application.add_handler(CommandHandler("scheduled", scheduled_command))
+    application.add_handler(CommandHandler("cancelschedule", cancelschedule_command))
     application.add_handler(CommandHandler("setnumbers", setnumbers_command))
     application.add_handler(CommandHandler("setproxies", setproxies_command))
     application.add_handler(CommandHandler("uploadnumbers", uploadnumbers_command))
@@ -1186,9 +1460,10 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     
-    logger.info("🚀 Ultra Fast Bot starting with concurrent processing...")
+    logger.info("🚀 Ultra Fast Bot v6.1 starting...")
     logger.info(f"⚡ Max Concurrent OTP: {MAX_CONCURRENT_OTP}")
     logger.info(f"📊 Log Interval: Every {LOG_INTERVAL} requests")
+    logger.info(f"⏰ Schedule Feature: Enabled")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
