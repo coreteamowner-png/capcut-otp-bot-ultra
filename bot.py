@@ -221,7 +221,7 @@ class DeviceIdentityGenerator:
 class CapCutOTPSender:
     """CapCut OTP Sender with SignerPy signatures - Original Working Logic"""
     
-    BASE_URL = "https://passport16-normal-usa.capcutapi.com"
+    BASE_URL = "https://passport16-normal-af.capcutapi.com"
     ENDPOINT = "/passport/mobile/send_code/v1/"
     
     BASE_CONFIG = {
